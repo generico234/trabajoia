@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Planificador de Compras IA — Generador de menús optimizados</title>
+    <meta
+      name="description"
+      content="Selecciona tus preferencias, ingresa lo que tienes en casa y recibe una lista de compras optimizada y recetas sugeridas por IA."
+    />
+  </head>
+  <body>
+    <main class="wrap">
+      <header>
+        <div class="logo">PC</div>
+        <div>
+          <h1>Pocket Chief</h1>
+          <p class="lead">
+            Genera menús y una lista de compras optimizada según tus
+            preferencias y lo que ya tenés en casa.
+          </p>
+        </div>
+      </header>
+      <section class="grid">
+        <div class="card left">
+          <form id="planner">
+            <div class="row">
+              <div style="flex: 1">
+                <label for="name">Tu nombre (opcional)</label>
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  placeholder="Ej. Mariana"
+                />
+              </div>
+              <div style="width: 110px">
+                <label for="meals">Comidas a planificar</label>
+                <input
+                  id="meals"
+                  name="meals"
+                  type="number"
+                  min="1"
+                  max="28"
+                  value="5"
+                />
+              </div>
+            </div>
+
+            <div style="margin-bottom: 10px">
+              <div class="hint">1) Elegí preferencias dietéticas</div>
+              <div class="prefs" aria-label="Preferencias dietéticas">
+                <label
+                  ><input
+                    type="checkbox"
+                    name="prefs"
+                    value="vegetariano"
+                  />Vegetariano</label
+                >
+                <label
+                  ><input type="checkbox" name="prefs" value="sin_tacc" />Sin
+                  TACC (sin gluten)</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    name="prefs"
+                    value="bajo_carbohidratos"
+                  />Bajo en carbohidratos</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    name="prefs"
+                    value="vegano"
+                  />Vegano</label
+                >
+                <label
+                  ><input type="checkbox" name="prefs" value="sin_lactosa" />Sin
+                  lactosa</label
+                >
+                <label
+                  ><input type="checkbox" name="prefs" value="sin_azucar" />Sin
+                  azúcar añadido</label
+                >
+              </div>
+            </div>
+
+            <div style="margin-bottom: 10px">
+              <div class="hint">
+                2) Ingresá los ingredientes que ya tenés (uno por línea o
+                separados por comas)
+              </div>
+              <textarea
+                id="pantry"
+                placeholder="Ej: arroz, huevos, tomate, espinaca, leche"
+              ></textarea>
+              <div class="small">
+                Sugerencia: nombrá tanto ingredientes principales como
+                condimentos (aceite, sal, especias) para que la IA optimice
+                mejor.
+              </div>
+            </div>
+
+            <div
+              style="
+                margin-top: 12px;
+                display: flex;
+                gap: 10px;
+                align-items: center;
+              "
+            >
+              <button class="btn" id="generate">Generar recetas y lista</button>
+              <button type="button" class="btn ghost" id="clear">
+                Limpiar
+              </button>
+              <div
+                style="margin-left: auto; color: var(--muted); font-size: 13px"
+              >
+                Salida: recetas + lista de compras optimizada
+              </div>
+            </div>
+
+            <div style="margin-top: 10px; color: var(--muted); font-size: 13px">
+              La IA sugerirá recetas sin duplicados y agrupará la lista por
+              categoría del supermercado.
+            </div>
+          </form>
+        </div>
+
+        <aside class="card right">
+          <div class="results">
+            <h3 style="margin-top: 0">Salida</h3>
+            <div id="output" aria-live="polite">
+              <div class="hint">
+                Aquí aparecerán las recetas sugeridas y la lista de compras
+                optimizada.
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top: 12px">
+            <h4></h4>
+            <p class="small">
+            
+            </p>
+          </div>
+        </aside>
+      </section>
+
+      <footer class="card" style="margin-top: 18px">
+        <div
+          style="
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+          "
+        >
+          <div>
+            <strong>Notas:</strong>
+
+          </div>
+          <div class="small"></div>
+        </div>
+      </footer>
+    </main>
+
+    <script>
+const form = document.getElementById('planner');
+const output = document.getElementById('output');
+const btnGen = document.getElementById('generate');
+const btnClear = document.getElementById('clear');
+
+function parsePrefs(){
+    return Array.from(document.querySelectorAll('input[name="prefs"]:checked'))
+        .map(c=>c.value);
+}
+
+function getPantry(){
+    const t = document.getElementById('pantry').value.trim();
+    if(!t) return [];
+    return t.split(/[,\n]+/).map(s=>s.trim()).filter(Boolean);
+}
+
+function showLoading(){
+    output.innerHTML = '<div class="hint">Generando receta con Mistral...</div>';
+    btnGen.disabled = true;
+    btnGen.textContent = 'Generando...';
+}
+
+function hideLoading(){
+    btnGen.disabled = false;
+    btnGen.textContent = 'Generar recetas y lista';
+}
+
+/* ----------------------
+   NUEVO PROMPT MÁS LIMPIO
+-------------------------*/
+function buildPrompt(payload) {
+    const prefs = payload.prefs.length > 0 ? payload.prefs.join(', ') : 'sin restricciones dietéticas';
+    const pantry = payload.pantry.length > 0 ? payload.pantry.join(', ') : 'ningún ingrediente disponible';
+    const meals = payload.meals || 5;
+
+    return `
+Sos un asistente culinario experto.
+
+Generá ${meals} recetas únicas y variadas que se adapten a estas condiciones:
+- NO uses formato código en la respuesta.
+- NO uses bloques de Markdown como \\\`.
+- Preferencias dietéticas: ${prefs}.
+- Ingredientes disponibles en casa: ${pantry}.
+- Si faltan ingredientes, incluilos en una lista de compras.
+- Cada receta debe incluir título, descripción, lista de ingredientes y pasos.
+
+Devolvé SOLO este JSON, puro, sin bloques, sin markdown, sin texto adicional:
+
+{
+ "recipes": [
+   {
+     "title": "...",
+     "description": "...",
+     "ingredients": ["..."],
+     "steps": "..."
+   }
+ ],
+ "shopping_list": {
+   "Verdulería": ["..."],
+   "Carnicería": ["..."],
+   "Despensa": ["..."]
+ }
+}
+`;
+}
+
+/* ----------------------
+   LIMPIAR RESPUESTA PARA EVITAR FORMATO CÓDIGO
+-------------------------*/
+function limpiarRespuesta(text){
+    return text
+        .replace(/.*?/gs, "")  // elimina bloques markdown
+        .replace(/```/g, "")         // elimina sobras
+        .replace(/^json/i, "")       // elimina "json"
+        .trim();
+}
+
+form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+
+    const payload = {
+        name: document.getElementById('name').value || null,
+        prefs: parsePrefs(),
+        pantry: getPantry(),
+        meals: Number(document.getElementById('meals').value) || 5
+    };
+
+    showLoading();
+    const prompt = buildPrompt(payload);
+
+    try {
+        const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer G5nRyGc2LZ1k3Y76i3GYUZEMktFu4fXc"
+            },
+            body: JSON.stringify({
+                model: "mistral-large-latest",
+                messages: [{ role: "user", content: prompt }],
+                temperature: 0.8,
+                max_tokens: 800
+            })
+        });
+
+        if (!response.ok) throw new Error("Error al llamar a la API de Mistral");
+
+        const result = await response.json();
+        let text = result.choices[0].message.content;
+
+        text = limpiarRespuesta(text);
+
+        let data;
+
+        try {
+            const match = text.match(/\{[\s\S]*\}/);
+            if (match) {
+                data = JSON.parse(match[0]);
+            } else {
+                throw new Error("No se encontró un JSON válido.");
+            }
+        } catch (jsonErr) {
+            output.innerHTML = <div class="hint">La IA devolvió texto no válido:<br><br>${text.replace(/\n/g,"<br>")}</div>;
+            hideLoading();
+            return;
+        }
+
+        renderOutput(data);
+
+    } catch (err) {
+        output.innerHTML = <div class="hint">Error al generar las recetas: ${err.message}</div>;
+    } finally {
+        hideLoading();
+    }
+});
+
+btnClear.addEventListener('click', ()=>{
+    form.reset();
+    document.getElementById('pantry').value='';
+    output.innerHTML = '<div class="hint">Aquí aparecerán las recetas sugeridas y la lista de compras optimizada.</div>';
+});
+
+/* ----------------------
+   RENDER SIN <pre> (para que NO PAREZCA CÓDIGO)
+-------------------------*/
+function renderOutput(data){
+    let html = '';
+
+    if(!data.recipes || data.recipes.length === 0){
+        html += '<div class="hint">No se generaron recetas.</div>';
+    } else {
+        html += '<h4>Recetas sugeridas</h4>';
+
+        data.recipes.forEach(r=>{
+            html += `<div class="recipe">
+                        <h4>${escapeHtml(r.title)}</h4>
+                        <div class="small">${escapeHtml(r.description)}</div>
+                        <strong>Ingredientes:</strong>
+                        <div>`;
+
+            r.ingredients.forEach(i=>{
+                html += <span class="chip">${escapeHtml(i)}</span>;
+            });
+
+            html += `</div>
+                     <strong>Pasos:</strong>
+                     <div class="small">${escapeHtml(r.steps).replace(/\n/g,"<br>")}</div>
+                    </div>`;
+        });
+    }
+
+    if(data.shopping_list){
+        html += '<h4>Lista de compras optimizada</h4>';
+        for(const cat of Object.keys(data.shopping_list)){
+            const items = data.shopping_list[cat];
+            html += `<div class="small" style="margin-top:8px">
+                        <strong>${escapeHtml(cat)}</strong>: ${items.join(', ')}
+                     </div>`;
+        }
+    }
+
+    output.innerHTML = html;
+}
+
+function escapeHtml(s){
+    if(!s) return '';
+    return s.replace(/&/g,'&amp;')
+            .replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;');
+}
+</script>
+  </body>
+</html>
